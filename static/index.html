@@ -5,17 +5,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gemini Audio to Audio</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
-        <h1>Gemini Audio to Audio</h1>
-        <p>Your personal AI voice assistant</p>
-        <div id="status" class="status-indicator"></div>
-        <button id="toggle-button">Start Listening</button>
-        <div class="visualizer-container">
-            <canvas id="visualizer"></canvas>
-        </div>
+        <article class="about active" data-page="about">
+            <header>
+                <h2 class="h2 article-title">Gemini Audio to Audio</h2>
+            </header>
+            <section class="about-text">
+                <p>Your personal AI voice assistant — powered by Gemini</p>
+            </section>
+            <section class="service">
+                <ul class="service-list">
+                    <li class="service-item">
+                        <div class="service-icon-box">
+                            <ion-icon name="mic-outline"></ion-icon>
+                        </div>
+                        <div class="service-content-box">
+                            <h4 class="h4 service-item-title">Real-time Listening</h4>
+                            <p class="service-item-text">Speak naturally and get instant responses.</p>
+                        </div>
+                    </li>
+                    <li class="service-item">
+                        <div class="service-icon-box">
+                            <ion-icon name="headset-outline"></ion-icon>
+                        </div>
+                        <div class="service-content-box">
+                            <h4 class="h4 service-item-title">Voice Output</h4>
+                            <p class="service-item-text">Hear AI responses in natural voice.</p>
+                        </div>
+                    </li>
+                </ul>
+            </section>
+            <div class="status-container">
+                <div id="status" class="status-indicator"></div>
+                <span id="status-text">Disconnected</span>
+            </div>
+            <button id="toggle-button" class="form-btn">
+                <ion-icon name="mic-outline"></ion-icon>
+                <span>Start Listening</span>
+            </button>
+            <section class="visualizer-container content-card">
+                <canvas id="visualizer"></canvas>
+                <div class="visualizer-overlay">
+                    <p>Speak now, I'm listening...</p>
+                </div>
+            </section>
+            <div class="info-footer">
+                <small>Real-time voice → Gemini → voice • No recording stored</small>
+            </div>
+        </article>
     </div>
     <script src="/static/app.js"></script>
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
 </body>
 </html>

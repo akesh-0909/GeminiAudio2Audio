@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Voice Assistant</title>
+    <!-- Custom styles provided by user -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            font-weight: 500;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #a0a0a0;
+            margin-top: 0;
+            margin-bottom: 2rem;
+        }
+
+        #toggle-button {
+            background-color: #1DB954;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            margin-top: 2rem;
+            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+        }
+
+        #toggle-button:hover {
+            background-color: #1ED760;
+        }
+
+        #toggle-button:active {
+            transform: scale(0.98);
+        }
+
+        #toggle-button.active {
+            background-color: #FF4500; /* Orange-Red for Recording */
+            box-shadow: 0 4px 15px rgba(255, 69, 0, 0.4);
+        }
+
+        #toggle-button.active:hover {
+            background-color: #FF6347;
+        }
+
+        #toggle-button:disabled {
+            background-color: #333;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #FF4500; /* Default: Disconnected/Idle */
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+            transition: background-color 0.3s;
+        }
+
+        .status-indicator.connected {
+            background-color: #1DB954; /* Green: Ready */
+        }
+
+        .status-indicator.listening {
+            background-color: #FF4500; /* Red: Listening */
+            animation: pulse 1s infinite alternate;
+        }
+
+        .status-indicator.thinking {
+            background-color: #3B82F6; /* Blue: Thinking */
+            animation: blink 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 69, 0, 0.5); }
+            100% { box-shadow: 0 0 0 10px rgba(255, 69, 0, 0); }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+
+        .visualizer-container {
+            margin-top: 2rem;
+            width: 100%;
+            max-width: 600px;
+            height: 80px; /* Reduced height for clean UI */
+            background-color: #282828;
+            border-radius: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #visualizer {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #user-prompt-display {
+            min-height: 40px;
+            margin-top: 1rem;
+            padding: 10px;
+            background-color: #282828;
+            border-radius: 8px;
+            text-align: left;
+            font-style: italic;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gemini Voice Assistant</h1>
+        <p>Ask me anything. I'll listen and respond in a natural voice.</p>
+
+        <div id="status-line">
+            <span id="status" class="status-indicator"></span>
+            <span id="status-text">Initializing...</span>
+        </div>
+
+        <div class="visualizer-container">
+            <canvas id="visualizer"></canvas>
+        </div>
+
+        <button id="toggle-button" disabled>Start Listening</button>
+        <div id="user-prompt-display">Say "Start listening" and then ask a question.</div>
+    </div>
+
+    <!-- Firebase and Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+        let db, auth;
+        let isAuthReady = false;
+
+        // UI Elements
+        const toggleButton = document.getElementById('toggle-button');
+        const statusIndicator = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+        const visualizerCanvas = document.getElementById('visualizer');
+        const promptDisplay = document.getElementById('user-prompt-display');
+
+        // Audio and Speech Variables
+        let audioContext;
+        let analyser;
+        let source;
+        let stream;
+        let recognition;
+        let isListening = false;
+        let audioPlaying = false;
+        const canvasCtx = visualizerCanvas.getContext('2d');
+
+        // Gemini API Configuration
+        const GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";
+        const API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+        const API_KEY = "AIzaSyC4uTNJ1pwo7f40K4VPu_9EVN12KemULdU"; // Managed by Canvas environment
+
+        // --- Utility Functions for Audio Processing ---
+
+        // Converts base64 PCM data to an ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Converts raw signed 16-bit PCM data to a playable WAV Blob
+        function pcmToWav(pcm16, sampleRate) {
+            const buffer = new ArrayBuffer(44 + pcm16.length * 2);
+            const view = new DataView(buffer);
+
+            /* RIFF identifier */
+            writeString(view, 0, 'RIFF');
+            /* RIFF chunk length */
+            view.setUint32(4, 36 + pcm16.length * 2, true);
+            /* RIFF type */
+            writeString(view, 8, 'WAVE');
+            /* format chunk identifier */
+            writeString(view, 12, 'fmt ');
+            /* format chunk length */
+            view.setUint32(16, 16, true);
+            /* sample format (1 for PCM) */
+            view.setUint16(20, 1, true);
+            /* channel count */
+            view.setUint16(22, 1, true);
+            /* sample rate */
+            view.setUint32(24, sampleRate, true);
+            /* byte rate (sample rate * block align) */
+            view.setUint32(28, sampleRate * 2, true);
+            /* block align (channels * bytes per sample) */
+            view.setUint16(32, 2, true);
+            /* bits per sample */
+            view.setUint16(34, 16, true);
+            /* data chunk identifier */
+            writeString(view, 36, 'data');
+            /* data chunk length */
+            view.setUint32(40, pcm16.length * 2, true);
+
+            // Write PCM data
+            let offset = 44;
+            for (let i = 0; i < pcm16.length; i++, offset += 2) {
+                view.setInt16(offset, pcm16[i], true);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // --- API and Firebase Logic ---
+
+        /**
+         * Generic fetch function with exponential backoff for retries.
+         */
+        async function fetchWithRetries(url, options, maxRetries = 5) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429 && i < maxRetries - 1) {
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`API call failed with status ${response.status}: ${errorBody}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        console.error("API call failed after all retries.", error);
+                        throw error;
+                    }
+                    // Continue to next retry
+                }
+            }
+        }
+
+        /**
+         * Calls the Gemini TTS API and returns a URL to the generated WAV audio.
+         */
+        async function callGeminiTTS(prompt) {
+            setStatus('thinking', 'Thinking...');
+            promptDisplay.textContent = `You said: "${prompt}"`;
+
+            const url = `${API_BASE_URL}/${GEMINI_TTS_MODEL}:generateContent?key=${API_KEY}`;
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        // Use a single, clear voice for the assistant
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: "Kore" }
+                        }
+                    }
+                },
+                model: GEMINI_TTS_MODEL
+            };
+
+            try {
+                const response = await fetchWithRetries(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
+
+                if (!audioData || !mimeType || !mimeType.startsWith("audio/L16")) {
+                    throw new Error("Invalid or missing audio data from TTS API.");
+                }
+
+                // Extract the sample rate from the mimeType (e.g., audio/L16;rate=24000)
+                const rateMatch = mimeType.match(/rate=(\d+)/);
+                const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000; // Default to 24000 if extraction fails
+
+                const pcmData = base64ToArrayBuffer(audioData);
+                const pcm16 = new Int16Array(pcmData);
+
+                const wavBlob = pcmToWav(pcm16, sampleRate);
+                return URL.createObjectURL(wavBlob);
+
+            } catch (error) {
+                console.error("Error generating or playing TTS:", error);
+                setStatus('error', 'Error: Failed to generate voice response.');
+                throw error;
+            }
+        }
+
+        // --- Application Setup ---
+
+        function setStatus(state, message) {
+            statusIndicator.className = 'status-indicator'; // Reset classes
+            statusIndicator.classList.add(state === 'ready' ? 'connected' : state);
+            statusText.textContent = message;
+
+            if (state === 'ready' || state === 'listening' || state === 'thinking') {
+                toggleButton.disabled = false;
+            } else {
+                toggleButton.disabled = true;
+            }
+        }
+
+        async function initFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                setLogLevel('error');
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        isAuthReady = true;
+                        setStatus('ready', 'Ready. Click Start Listening.');
+                    } else {
+                        isAuthReady = false;
+                        setStatus('error', 'Authentication Failed.');
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                setStatus('error', 'Firebase Init Error');
+            }
+        }
+
+        function initAudioAndVisualizer() {
+            // Check for Webkit/Mozilla compatibility for SpeechRecognition
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                setStatus('error', 'Browser does not support Speech Recognition.');
+                toggleButton.disabled = true;
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                isListening = true;
+                toggleButton.classList.add('active');
+                toggleButton.textContent = 'Stop Listening';
+                setStatus('listening', 'Listening...');
+                promptDisplay.textContent = 'Speak now...';
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                toggleButton.classList.remove('active');
+                if (audioPlaying) return; // Don't set to ready if audio is about to play
+                if (statusText.textContent === 'Listening...') {
+                    setStatus('ready', 'Ready. Click Start Listening.');
+                    promptDisplay.textContent = 'No speech detected.';
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech Recognition Error:', event.error);
+                recognition.stop();
+                setStatus('ready', 'Ready. (Recognition Error)');
+                promptDisplay.textContent = `Recognition Error: ${event.error}. Try again.`;
+            };
+
+            recognition.onresult = async (event) => {
+                const transcript = event.results[0][0].transcript;
+                console.log('Transcript:', transcript);
+                recognition.onend = () => { /* Prevent setting to ready */ }; // Override onend to prevent race condition
+
+                try {
+                    toggleButton.disabled = true; // Disable during processing
+                    const audioUrl = await callGeminiTTS(transcript);
+                    await playAudio(audioUrl);
+                } catch (error) {
+                    // Error handler inside callGeminiTTS already updated status
+                } finally {
+                    toggleButton.disabled = false;
+                    setStatus('ready', 'Ready. Click Start Listening.');
+                    recognition.onend = initAudioAndVisualizer().recognition.onend; // Restore default onend
+                }
+            };
+
+            // Set up visualizer function
+            drawVisualizer();
+        }
+
+        async function initMicrophone() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+            }
+
+            if (!stream) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    console.log('Microphone connected.');
+                } catch (err) {
+                    console.error('Microphone access denied:', err);
+                    setStatus('error', 'Microphone required. Access denied.');
+                    toggleButton.disabled = true;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        async function playAudio(audioUrl) {
+            audioPlaying = true;
+            setStatus('thinking', 'Assistant Speaking...');
+            const audio = new Audio(audioUrl);
+
+            // Optional: Connect audio output to a second analyser for visualization of the response
+            // For simplicity, we'll just track the audio playing status
+
+            return new Promise((resolve) => {
+                audio.onended = () => {
+                    audioPlaying = false;
+                    URL.revokeObjectURL(audioUrl); // Clean up the Blob URL
+                    resolve();
+                };
+                audio.onerror = (e) => {
+                    console.error("Audio playback error:", e);
+                    audioPlaying = false;
+                    URL.revokeObjectURL(audioUrl);
+                    setStatus('error', 'Audio Playback Failed.');
+                    resolve(); // Resolve anyway to allow the app to recover
+                };
+                audio.play();
+            });
+        }
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+
+            const WIDTH = visualizerCanvas.width;
+            const HEIGHT = visualizerCanvas.height;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+            
+            if (!isListening || audioPlaying) {
+                 // Draw a low bar when idle or speaking, or clear it
+                 if (!isListening && !audioPlaying) return;
+
+            }
+            
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = '#1DB954';
+            canvasCtx.beginPath();
+
+            const sliceWidth = WIDTH * 1.0 / dataArray.length;
+            let x = 0;
+
+            for(let i = 0; i < dataArray.length; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * HEIGHT / 2;
+
+                if(i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(WIDTH, HEIGHT/2);
+            canvasCtx.stroke();
+        }
+
+        // --- Event Handlers ---
+
+        toggleButton.addEventListener('click', async () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                if (await initMicrophone()) {
+                    recognition.start();
+                }
+            }
+        });
+
+        // Initial setup on load
+        window.onload = () => {
+            visualizerCanvas.width = visualizerCanvas.offsetWidth;
+            visualizerCanvas.height = visualizerCanvas.offsetHeight;
+            initFirebase();
+            initAudioAndVisualizer();
+        };
+
+    </script>
+</body>
+</html>

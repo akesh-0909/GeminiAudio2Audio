@@ -10,7 +10,15 @@ To install the dependencies for this script, run:
 pip install google-genai opencv-python pyaudio pillow mss
 ```
 """
+import cv2  # noqa: E402
+import pyaudio
+import PIL.Image
+import mss
 
+import argparse
+
+from google import genai
+from google.genai import types
 import os
 import asyncio
 import base64
@@ -33,15 +41,7 @@ logging.basicConfig(
 )
 # ---
 
-import cv2
-import pyaudio
-import PIL.Image
-import mss
 
-import argparse
-
-from google import genai
-from google.genai import types
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -326,7 +326,7 @@ class AudioLoop:
         except asyncio.CancelledError:
             logging.info("Run loop cancelled, user requested exit.")
             pass
-        except ExceptionGroup as EG:
+        except ExceptionGroup as EG:  # noqa: F821
             logging.error("ExceptionGroup caught in run loop.", exc_info=True)
             if getattr(self, 'audio_stream', None) and not self.audio_stream.is_stopped():
                 self.audio_stream.close()
