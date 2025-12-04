@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: geminiaudio2audio
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: google-genai>=0.5.1
+Requires-Dist: mss>=9.0.1
+Requires-Dist: opencv-python>=4.9.0
+Requires-Dist: pillow>=10.2.0
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: fastapi>=0.109.2
+Requires-Dist: uvicorn[standard]>=0.27.1
+Requires-Dist: websockets>=12.0

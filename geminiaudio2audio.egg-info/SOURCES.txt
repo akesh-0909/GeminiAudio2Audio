@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+geminiaudio2audio.egg-info/PKG-INFO
+geminiaudio2audio.egg-info/SOURCES.txt
+geminiaudio2audio.egg-info/dependency_links.txt
+geminiaudio2audio.egg-info/entry_points.txt
+geminiaudio2audio.egg-info/requires.txt
+geminiaudio2audio.egg-info/top_level.txt
