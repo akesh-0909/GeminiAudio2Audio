@@ -79,7 +79,16 @@ const startListening = async () => {
     try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const audioContextOptions = { sampleRate: 16000 };
+        audioContext = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions);
+        
+        console.log(`Requested sample rate 16000 Hz, actual sample rate: ${audioContext.sampleRate} Hz`);
+
+        // Check if the browser could provide the requested rate.
+        if (audioContext.sampleRate !== 16000) {
+            console.warn("Warning: Browser could not provide the requested sample rate of 16000 Hz. Audio may not be processed correctly by the API.");
+        }
+
         scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
         mediaStreamSource = audioContext.createMediaStreamSource(mediaStream);
 
@@ -123,11 +132,10 @@ const stopListening = () => {
     }
 
     if (websocket && websocket.readyState === WebSocket.OPEN) {
-        // Signal the end of the turn before closing
-        websocket.send(JSON.stringify({ type: "end_of_turn" }));
-        console.log("Sent end_of_turn signal.");
-        // We don't close the websocket here anymore,
-        // let the server close it after sending the response.
+        // We will no longer send a manual end_of_turn.
+        // The API's automatic VAD will handle it.
+        // The websocket connection will remain open for the next turn.
+        console.log("Microphone stopped. WebSocket remains open.");
     }
 
 

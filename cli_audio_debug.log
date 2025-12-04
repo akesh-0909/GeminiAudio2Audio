@@ -1,0 +1,26 @@
+2025-12-05 01:08:26,322 - INFO - MainThread - backend_reference.py:84 - AudioLoop initialized with video_mode: camera
+2025-12-05 01:08:26,322 - INFO - MainThread - backend_reference.py:295 - Starting AudioLoop run.
+2025-12-05 01:08:27,298 - INFO - MainThread - backend_reference.py:302 - Gemini Live session established.
+2025-12-05 01:08:27,298 - INFO - MainThread - backend_reference.py:306 - Initialized audio_in_queue and out_queue.
+2025-12-05 01:08:27,298 - INFO - MainThread - backend_reference.py:308 - Creating tasks...
+2025-12-05 01:08:27,300 - INFO - MainThread - backend_reference.py:313 - Creating get_frames task for camera.
+2025-12-05 01:08:27,300 - INFO - MainThread - backend_reference.py:321 - All tasks created.
+2025-12-05 01:08:27,300 - INFO - MainThread - backend_reference.py:175 - send_realtime task started.
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:191 - listen_audio task started.
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:193 - Using default input device: default
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:234 - receive_audio task started.
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:237 - Waiting for a turn from session.receive()...
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:239 - Received a turn generator from session.
+2025-12-05 01:08:27,301 - INFO - MainThread - backend_reference.py:266 - play_audio task started.
+2025-12-05 01:08:27,340 - INFO - MainThread - backend_reference.py:274 - PyAudio output stream opened.
+2025-12-05 01:08:27,341 - INFO - MainThread - backend_reference.py:203 - Microphone audio stream opened successfully.
+2025-12-05 01:08:27,406 - INFO - MainThread - backend_reference.py:218 - Read 2048 bytes from mic. RMS: 158.2731
+2025-12-05 01:08:27,407 - INFO - MainThread - backend_reference.py:179 - Got message from out_queue, sending to Gemini. Type: audio/pcm
+2025-12-05 01:08:27,456 - INFO - MainThread - backend_reference.py:284 - play_audio task cancelled.
+2025-12-05 01:08:27,457 - INFO - MainThread - backend_reference.py:290 - Closing PyAudio output stream.
+2025-12-05 01:08:27,458 - INFO - MainThread - backend_reference.py:184 - send_realtime task cancelled.
+2025-12-05 01:08:27,458 - INFO - MainThread - backend_reference.py:223 - listen_audio task cancelled.
+2025-12-05 01:08:27,458 - INFO - MainThread - backend_reference.py:229 - Closing microphone audio stream.
+2025-12-05 01:08:27,460 - INFO - MainThread - backend_reference.py:259 - receive_audio task cancelled.
+2025-12-05 01:08:27,597 - INFO - MainThread - backend_reference.py:327 - Run loop cancelled, user requested exit.
+2025-12-05 01:08:27,597 - INFO - MainThread - backend_reference.py:335 - AudioLoop run finished.

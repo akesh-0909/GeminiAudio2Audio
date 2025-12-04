@@ -27,6 +27,7 @@ import mss
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv;load_dotenv()
+from starlette.websockets import WebSocketDisconnect # Import WebSocketDisconnect
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -146,57 +147,99 @@ class WebSocketAudioLoop:
                     data = message['bytes']
                     logger.info(f"Received audio chunk from client: {len(data)} bytes")
                     await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
-                elif 'text' in message:
-                    text_data = message['text']
-                    logger.info(f"Received text message from client: {text_data}")
-                    try:
-                        json_data = json.loads(text_data)
-                        if json_data.get("type") == "end_of_turn":
-                            logger.info("Client signaled end of turn.")
-                            await self.session.send(end_of_turn=True)
-                    except json.JSONDecodeError:
-                        logger.error(f"Could not decode JSON from text message: {text_data}")
+                # Text message handling is removed as it's no longer needed.
 
+            except (WebSocketDisconnect, asyncio.CancelledError):
+                logger.info("Client disconnected from receive_from_client.")
+                break
             except Exception as e:
                 logger.error(f"Error receiving from client: {e}")
                 break
 
-    async def gemini_receiver(self):
+
+
+    async def process_gemini_responses(self):
+        """Continuously reads responses from the Gemini session and sends them to the client."""
+        logger.info("Starting Gemini response processing task.")
         while True:
-            logger.info("Gemini receiver: waiting for turn...")
-            turn = self.session.receive()
-            audio_buffer = bytearray()
-            async for response in turn:
-                if data := response.data:
-                    audio_buffer.extend(data)
-                if text := response.text:
-                    logger.info(f"Gemini response text: {text}")
-            
-            if audio_buffer:
-                logger.info(f"Gemini turn ended. Audio buffer size: {len(audio_buffer)} bytes")
-                num_frames = len(audio_buffer) // (CHANNELS * 2) # 2 bytes for 16-bit PCM
-                wav_header = create_wav_header(RECEIVE_SAMPLE_RATE, CHANNELS, 2, num_frames)
-                wav_data = wav_header + audio_buffer
-                logger.info(f"Sending WAV data to client: {len(wav_data)} bytes")
-                await self.websocket.send_bytes(wav_data)
-            else:
-                logger.info("Gemini turn ended with no audio data.")
+            try:
+                logger.info("Attempting to receive turn from Gemini session...")
+                turn = self.session.receive() # Don't await here, it's an async_generator
+                logger.info("Received a turn generator from session. Entering async for loop...")
+                audio_buffer = bytearray()
+                text_response_parts = []
+                async for response in turn:
+                    logger.debug(f"Processing Gemini response part. Has data: {response.data is not None}, has text: {response.text is not None}")
+                    if data := response.data:
+                        audio_buffer.extend(data)
+                        logger.debug(f"Appended {len(data)} bytes to audio_buffer.")
+                    if text := response.text:
+                        text_response_parts.append(text)
+                        logger.info(f"Gemini response text part: {text}")
+                
+                logger.info("Finished processing turn from Gemini.")
+                
+                if text_response_parts:
+                    full_text_response = "".join(text_response_parts)
+                    # Optionally send text response to client if frontend is ready to handle it
+                    # await self.websocket.send_text(json.dumps({"type": "text", "content": full_text_response}))
+                    logger.info(f"Full Gemini text response: {full_text_response}")
+
+                if audio_buffer:
+                    logger.info(f"Gemini turn ended. Audio buffer size: {len(audio_buffer)} bytes")
+                    # Calculate num_frames correctly
+                    sample_width = 2 # Assuming 16-bit PCM
+                    num_frames = len(audio_buffer) // (CHANNELS * sample_width)
+                    wav_header = create_wav_header(RECEIVE_SAMPLE_RATE, CHANNELS, sample_width, num_frames)
+                    wav_data = wav_header + audio_buffer
+                    logger.info(f"Sending WAV data to client: {len(wav_data)} bytes")
+                    await self.websocket.send_bytes(wav_data)
+                else:
+                    logger.info("Gemini turn ended with no audio data.")
+
+            except asyncio.CancelledError:
+                logger.info("Gemini response processing task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Error in Gemini response processing task: {e}", exc_info=True)
+                break
 
     async def run(self):
+        tasks = [] # Define tasks list outside try for wider scope
         try:
+            # Connect to Gemini Live session once
             async with client.aio.live.connect(model=MODEL, config=CONFIG) as session:
                 self.session = session
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(self.send_realtime())
-                    tg.create_task(self.receive_from_client())
-                    tg.create_task(self.gemini_receiver())
+                logger.info("Gemini Live session established.")
 
-                    if self.video_mode == "camera":
-                        tg.create_task(self.get_frames())
-                    elif self.video_mode == "screen":
-                        tg.create_task(self.get_screen())
+                # Start all necessary tasks
+                # Task to receive audio/text from client and send to Gemini session
+                tasks.append(asyncio.create_task(self.receive_from_client()))
 
-        except asyncio.CancelledError:
-            pass
+                # Task to send audio/video from internal queue to Gemini session
+                tasks.append(asyncio.create_task(self.send_realtime()))
+
+                # Optional video tasks
+                if self.video_mode == "camera":
+                    tasks.append(asyncio.create_task(self.get_frames()))
+                elif self.video_mode == "screen":
+                    tasks.append(asyncio.create_task(self.get_screen()))
+
+                # Task to receive responses from Gemini and send to client
+                tasks.append(asyncio.create_task(self.process_gemini_responses()))
+
+                # Keep the main run loop alive until an exception occurs or it's cancelled
+                # We want these tasks to run indefinitely until WebSocketDisconnect
+                await asyncio.gather(*tasks)
+
+        except (asyncio.CancelledError, WebSocketDisconnect):
+            logger.info("Run method cancelled or client disconnected. Shutting down tasks.")
         except Exception as e:
-            traceback.print_exception(e)
+            logger.error(f"An error occurred in the run loop: {e}")
+            traceback.print_exc()
+        finally:
+            # Ensure all created tasks are cancelled
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True) # Wait for tasks to finish cancelling
