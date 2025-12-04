@@ -121,8 +121,13 @@ const stopListening = () => {
     if (audioContext && audioContext.state !== 'closed') {
         audioContext.close();
     }
-    if (websocket && (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING)) {
-        websocket.close();
+
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        // Signal the end of the turn before closing
+        websocket.send(JSON.stringify({ type: "end_of_turn" }));
+        console.log("Sent end_of_turn signal.");
+        // We don't close the websocket here anymore,
+        // let the server close it after sending the response.
     }
 
 

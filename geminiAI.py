@@ -18,6 +18,7 @@ import io
 import traceback
 import wave
 import logging
+import json
 
 import cv2
 import PIL.Image
@@ -137,14 +138,27 @@ class WebSocketAudioLoop:
             if self.session:
                 await self.session.send(input=msg)
 
-    async def receive_audio_chunks(self):
+    async def receive_from_client(self):
         while True:
             try:
-                data = await self.websocket.receive_bytes()
-                logger.info(f"Received audio chunk from client: {len(data)} bytes")
-                await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+                message = await self.websocket.receive()
+                if 'bytes' in message:
+                    data = message['bytes']
+                    logger.info(f"Received audio chunk from client: {len(data)} bytes")
+                    await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+                elif 'text' in message:
+                    text_data = message['text']
+                    logger.info(f"Received text message from client: {text_data}")
+                    try:
+                        json_data = json.loads(text_data)
+                        if json_data.get("type") == "end_of_turn":
+                            logger.info("Client signaled end of turn.")
+                            await self.session.send(end_of_turn=True)
+                    except json.JSONDecodeError:
+                        logger.error(f"Could not decode JSON from text message: {text_data}")
+
             except Exception as e:
-                logger.error(f"Error receiving audio chunks: {e}")
+                logger.error(f"Error receiving from client: {e}")
                 break
 
     async def gemini_receiver(self):
@@ -174,7 +188,7 @@ class WebSocketAudioLoop:
                 self.session = session
                 async with asyncio.TaskGroup() as tg:
                     tg.create_task(self.send_realtime())
-                    tg.create_task(self.receive_audio_chunks())
+                    tg.create_task(self.receive_from_client())
                     tg.create_task(self.gemini_receiver())
 
                     if self.video_mode == "camera":
